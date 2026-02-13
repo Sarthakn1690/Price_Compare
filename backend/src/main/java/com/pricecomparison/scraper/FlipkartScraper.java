@@ -1,0 +1,59 @@
+package com.pricecomparison.scraper;
+
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
+import org.springframework.stereotype.Component;
+
+import java.math.BigDecimal;
+
+@Component
+public class FlipkartScraper extends BaseScraper {
+
+    @Override
+    public String getPlatformName() {
+        return "flipkart";
+    }
+
+    @Override
+    public boolean canHandle(String url) {
+        return url != null && url.contains("flipkart.com");
+    }
+
+    @Override
+    public ScraperResult scrape(String url) throws Exception {
+        Document doc = fetchDocument(url);
+        String name = extractText(doc, ".B_NuCI", ".yhB1nd", "span.VU-ZEz");
+        String brand = extractText(doc, ".G6XhRU");
+        BigDecimal price = parsePrice(extractText(doc, "._30jeq3._16Jk6d", "._25b18c ._30jeq3", ".CxhGGd"));
+        String imageUrl = extractAttr(doc, "._396QI4", "src");
+        if (imageUrl == null) imageUrl = extractAttr(doc, "img[class*='_396QI']", "src");
+
+        return ScraperResult.builder()
+                .name(name != null ? name.trim() : "Unknown Product")
+                .brand(brand)
+                .category(null)
+                .imageUrl(imageUrl)
+                .specifications(emptySpecs())
+                .price(price != null ? price : BigDecimal.ZERO)
+                .productUrl(url)
+                .availability(price != null)
+                .platform(getPlatformName())
+                .build();
+    }
+
+    private String extractText(Document doc, String... selectors) {
+        for (String sel : selectors) {
+            Element el = doc.selectFirst(sel);
+            if (el != null) {
+                String text = el.text();
+                if (text != null && !text.isBlank()) return text;
+            }
+        }
+        return null;
+    }
+
+    private String extractAttr(Document doc, String selector, String attr) {
+        Element el = doc.selectFirst(selector);
+        return el != null ? el.attr(attr) : null;
+    }
+}
