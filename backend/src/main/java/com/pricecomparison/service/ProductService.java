@@ -37,6 +37,7 @@ public class ProductService {
     @Transactional
     public ProductResponse searchByUrl(String url) {
         ScraperResult sourceResult = scraperService.scrapeUrl(url);
+        String sourcePlatform = sourceResult.getPlatform();
         Product product = productRepository.save(Product.builder()
                 .name(sourceResult.getName())
                 .brand(sourceResult.getBrand())
@@ -45,8 +46,34 @@ public class ProductService {
                 .specifications(sourceResult.getSpecifications() != null ? sourceResult.getSpecifications() : Map.of())
                 .build());
         List<Price> prices = new ArrayList<>();
-        savePrice(product, sourceResult.getPlatform(), sourceResult.getPrice(), sourceResult.getProductUrl(), sourceResult.isAvailability(), prices);
-        recordPriceHistory(product, sourceResult.getPlatform(), sourceResult.getPrice());
+        savePrice(product, sourcePlatform, sourceResult.getPrice(), sourceResult.getProductUrl(), sourceResult.isAvailability(), prices);
+        recordPriceHistory(product, sourcePlatform, sourceResult.getPrice());
+
+        // Best-effort cross-platform comparison: try to find same product on other platforms
+        scraperService.getAllScrapers().forEach(scraper -> {
+            if (scraper.getPlatformName().equalsIgnoreCase(sourcePlatform)) {
+                return; // skip the source platform
+            }
+            if (!scraper.supportsSearch()) {
+                return;
+            }
+            try {
+                ScraperResult other = scraper.searchByNameAndBrand(sourceResult.getName(), sourceResult.getBrand());
+                if (other == null || other.getPrice() == null || other.getPrice().compareTo(BigDecimal.ZERO) <= 0) {
+                    return;
+                }
+                // Avoid duplicates by platform
+                boolean alreadyPresent = prices.stream()
+                        .anyMatch(p -> p.getPlatform().equalsIgnoreCase(other.getPlatform()));
+                if (alreadyPresent) return;
+
+                savePrice(product, other.getPlatform(), other.getPrice(), other.getProductUrl(), other.isAvailability(), prices);
+                recordPriceHistory(product, other.getPlatform(), other.getPrice());
+            } catch (Exception e) {
+                log.debug("Cross-platform scrape failed for {} on {}: {}", product.getId(), scraper.getPlatformName(), e.getMessage());
+            }
+        });
+
         return toProductResponse(product, enrichPricesWithSavings(prices));
     }
 

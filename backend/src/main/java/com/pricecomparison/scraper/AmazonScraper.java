@@ -2,13 +2,16 @@ package com.pricecomparison.scraper;
 
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
-import org.jsoup.select.Elements;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 @Component
 public class AmazonScraper extends BaseScraper {
+
+    private static final String BASE_DOMAIN = "https://www.amazon.in";
 
     @Override
     public String getPlatformName() {
@@ -18,6 +21,11 @@ public class AmazonScraper extends BaseScraper {
     @Override
     public boolean canHandle(String url) {
         return url != null && url.contains("amazon.");
+    }
+
+    @Override
+    public boolean supportsSearch() {
+        return true;
     }
 
     @Override
@@ -40,6 +48,35 @@ public class AmazonScraper extends BaseScraper {
                 .availability(price != null)
                 .platform(getPlatformName())
                 .build();
+    }
+
+    @Override
+    public ScraperResult searchByNameAndBrand(String name, String brand) throws Exception {
+        String query = buildQuery(name, brand);
+        String searchUrl = BASE_DOMAIN + "/s?k=" + URLEncoder.encode(query, StandardCharsets.UTF_8);
+        Document doc = fetchDocument(searchUrl);
+
+        // Amazon search results: pick first organic result
+        Element first = doc.selectFirst("div.s-main-slot div[data-component-type='s-search-result'] h2 a");
+        if (first == null) {
+            return null;
+        }
+        String href = first.attr("href");
+        if (!href.startsWith("http")) {
+            href = BASE_DOMAIN + href;
+        }
+        return scrape(href);
+    }
+
+    private String buildQuery(String name, String brand) {
+        StringBuilder sb = new StringBuilder();
+        if (brand != null && !brand.isBlank()) {
+            sb.append(brand).append(" ");
+        }
+        if (name != null && !name.isBlank()) {
+            sb.append(name);
+        }
+        return sb.toString().trim();
     }
 
     private String extractText(Document doc, String... selectors) {

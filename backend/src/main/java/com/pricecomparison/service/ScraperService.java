@@ -22,6 +22,13 @@ public class ScraperService {
         return scrapers.stream().filter(s -> s.canHandle(url)).findFirst();
     }
 
+    /**
+     * Expose all configured scrapers for cross-platform searches.
+     */
+    public List<Scraper> getAllScrapers() {
+        return scrapers;
+    }
+
     public ScraperResult scrapeUrl(String url) {
         Scraper scraper = getScraperForUrl(url)
                 .orElseThrow(() -> new CustomExceptions.InvalidUrlException("Unsupported platform: " + url));
